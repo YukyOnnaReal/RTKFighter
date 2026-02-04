@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RTK: Бой с манекеном</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #000;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        /* Экран затемнения/осветления */
+        .fade-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: black;
+            z-index: 100;
+            opacity: 1;
+            transition: opacity 3s ease-in-out;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .start-button {
+            background-color: #ff3333;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            padding: 20px 40px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.7);
+            transition: all 0.3s;
+            z-index: 101;
+        }
+
+        .start-button:hover {
+            background-color: #ff0000;
+            transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(255, 0, 0, 0.9);
+        }
+
+        /* Игровое поле */
+        .background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+        }
+
+        .character {
+            position: absolute;
+            bottom: 20px;
+            transition: transform 0.15s ease-out, left 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            will-change: transform, left;
+        }
+
+        .player {
+            left: 100px;
+            z-index: 10;
+        }
+
+        .doll {
+            left: 50%;
+            transform: translateX(-50%) scaleX(-1); /* Инверсия по умолчанию */
+            z-index: 5;
+            transition: transform 0.2s ease;
+        }
+
+        /* Анимации */
+        @keyframes jump {
+            0% { 
+                bottom: 20px;
+                transform: scale(1);
+            }
+            50% { 
+                bottom: 70px;
+                transform: scale(1.05);
+            }
+            100% { 
+                bottom: 20px;
+                transform: scale(1);
+            }
+        }
+
+        @keyframes punch {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        @keyframes hit {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+
+        @keyframes sit-down {
+            0% { 
+                height: 300px;
+                bottom: 20px;
+            }
+            100% { 
+                height: 250px;
+                bottom: 10px;
+            }
+        }
+
+        @keyframes stand-up {
+            0% { 
+                height: 250px;
+                bottom: 10px;
+            }
+            100% { 
+                height: 300px;
+                bottom: 20px;
+            }
+        }
+
+        /* Частицы урона */
+        .damage-particle {
+            position: absolute;
+            color: #ffcc00;
+            font-size: 28px;
+            font-weight: bold;
+            text-shadow: 2px 2px 0 #ff0000, -2px -2px 0 #ff0000;
+            z-index: 20;
+            pointer-events: none;
+            animation: float-up 1s ease-out forwards;
+        }
+
+        @keyframes float-up {
+            0% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(-50px) scale(1.5);
+            }
+        }
+
+        /* Частицы пыли */
+        .dust-particle {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            background-color: rgba(100, 100, 100, 0.7);
+            border-radius: 50%;
+            z-index: 6;
+            pointer-events: none;
+            animation: dust-fade 0.5s ease-out forwards;
+        }
+
+        @keyframes dust-fade {
+            0% {
+                opacity: 1;
+                transform: scale(0.5);
+            }
+            100% {
+                opacity: 0;
+                transform: scale(2);
+            }
+        }
+
+        /* Таймер боя */
+        .countdown {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 120px;
+            font-weight: bold;
+            color: #ffcc00;
+            text-shadow: 5px 5px 0 #ff0000, -5px -5px 0 #ff0000;
+            z-index: 50;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+
+        .fight-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.5);
+            font-size: 100px;
+            font-weight: bold;
+            color: #ff0000;
+            text-shadow: 5px 5px 0 #000, -5px -5px 0 #000;
+            z-index: 50;
+            opacity: 0;
+            pointer-events: none;
+            text-transform: uppercase;
+            letter-spacing: 10px;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+
+        /* Кнопка сдаться */
+        .surrender-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 120px;
+            height: 60px;
+            background-color: #ff0000;
+            color: white;
+            font-weight: bold;
+            border: none;
+            clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+            cursor: pointer;
+            z-index: 100;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            font-size: 14px;
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.7);
+        }
+
+        .surrender-btn:hover {
+            background-color: #cc0000;
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.9);
+        }
+
+        /* Инструкции */
+        .instructions {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 16px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 30;
+        }
+
+        .instructions h3 {
+            color: #ffcc00;
+            margin-bottom: 5px;
+        }
+
+        .instructions ul {
+            list-style-type: none;
+        }
+
+        .instructions li {
+            margin-bottom: 3px;
+        }
+
+        /* Счётчик ударов */
+        .hit-counter {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            font-size: 24px;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 5px;
+            z-index: 30;
+            font-weight: bold;
+            transition: transform 0.2s ease;
+        }
+
+        .hit-counter span {
+            color: #ffcc00;
+        }
+
+        /* Индикатор блокировки управления */
+        .control-blocked {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.2);
+            z-index: 45;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <!-- Затемнение экрана -->
+        <div class="fade-screen" id="fadeScreen">
+            <button class="start-button" id="startButton">НАЧАТЬ БОЙ</button>
+        </div>
+
+        <!-- Индикатор блокировки управления -->
+        <div class="control-blocked" id="controlBlocked"></div>
+
+        <!-- Фон -->
+        <img class="background" src="arts/Background1.jpg" alt="Фон арены" id="background">
+
+        <!-- Игрок -->
+        <img class="character player" id="player" src="arts/BogachStand.png" alt="Игрок" style="height: 300px;">
+
+        <!-- Манекен -->
+        <img class="character doll" id="doll" src="arts/Doll.png" alt="Манекен" style="height: 320px;">
+
+        <!-- Таймер боя -->
+        <div class="countdown" id="countdown3">3</div>
+        <div class="countdown" id="countdown2">2</div>
+        <div class="countdown" id="countdown1">1</div>
+        <div class="fight-text" id="fightText">FIGHT!</div>
+
+        <!-- Кнопка сдаться -->
+        <button class="surrender-btn" id="surrenderBtn">СДАЮСЬ</button>
+
+        <!-- Инструкции -->
+        <div class="instructions">
+            <h3>Управление:</h3>
+            <ul>
+                <li><strong>A</strong> - Движение влево</li>
+                <li><strong>D</strong> - Движение вправо</li>
+                <li><strong>W</strong> - Прыжок</li>
+                <li><strong>S</strong> - Присесть</li>
+                <li><strong>ПРОБЕЛ</strong> - Удар рукой (20 урона)</li>
+                <li><strong>SHIFT + ПРОБЕЛ</strong> - Удар ногой (30 урона)</li>
+            </ul>
+        </div>
+
+        <!-- Счётчик ударов -->
+        <div class="hit-counter">Удары: <span id="hitCount">0</span></div>
+    </div>
+
+    <!-- Убрана фоновая музыка -->
+    <!-- Убраны звуки ударов -->
+    <!-- Оставлен только голосовой звук -->
+    <audio id="voiceSound">
+        <source src="music/BogachVoice1.mp3" type="audio/mp4">
+    </audio>
+
+    <script>
+        // Элементы DOM
+        const fadeScreen = document.getElementById('fadeScreen');
+        const startButton = document.getElementById('startButton');
+        const player = document.getElementById('player');
+        const doll = document.getElementById('doll');
+        const background = document.getElementById('background');
+        const surrenderBtn = document.getElementById('surrenderBtn');
+        const hitCountElement = document.getElementById('hitCount');
+        const controlBlocked = document.getElementById('controlBlocked');
+        
+        // Элементы таймера
+        const countdown3 = document.getElementById('countdown3');
+        const countdown2 = document.getElementById('countdown2');
+        const countdown1 = document.getElementById('countdown1');
+        const fightText = document.getElementById('fightText');
+        
+        // Аудио элемент (только голос)
+        const voiceSound = document.getElementById('voiceSound');
+        
+        // Состояние игры
+        let gameActive = false;
+        let controlsActive = false; // Управление активно только после отсчета
+        let playerPosition = 100; // Позиция игрока по X
+        let playerDirection = 1; // 1 = смотрит вправо, -1 = смотрит влево
+        let dollDirection = -1; // -1 = смотрит влево (инверсия), 1 = смотрит вправо
+        let isJumping = false;
+        let isSitting = false;
+        let isPunching = false;
+        let isKicking = false;
+        let hitCount = 0;
+        let moveAnimationFrame = null;
+        let velocityX = 0; // Скорость движения по X для плавности
+        
+        // Константы игры
+        const PLAYER_SPEED = 12;
+        const PLAYER_ACCELERATION = 0.8;
+        const PLAYER_DECELERATION = 0.9;
+        const DOLL_WIDTH = 80;
+        const DOLL_HEIGHT = 320;
+        const PLAYER_WIDTH = 70;
+        const PLAYER_HEIGHT = 300;
+        const HIT_DISTANCE = 100; // Дистанция для удара
+        const MAX_VELOCITY = 25; // Максимальная скорость
+        
+        // Начало игры
+        startButton.addEventListener('click', startGame);
+        
+        // Автозапуск игры через 2 секунды
+        setTimeout(() => {
+            if (!gameActive) {
+                startButton.click();
+            }
+        }, 2000);
+        
+        function startGame() {
+            // Плавное осветление экрана
+            fadeScreen.style.opacity = '0';
+            
+            // Запускаем таймер боя сразу после осветления
+            setTimeout(() => {
+                startCountdown();
+            }, 1000);
+            
+            // Убираем экран затемнения через 3 секунды
+            setTimeout(() => {
+                fadeScreen.style.display = 'none';
+                gameActive = true;
+            }, 3000);
+        }
+        
+        function startCountdown() {
+            // Блокируем управление
+            controlsActive = false;
+            controlBlocked.style.opacity = '0.5';
+            
+            // Показываем таймер обратного отсчета
+            showElement(countdown3, 'scale(1.5)', 'scale(1)');
+            
+            setTimeout(() => {
+                hideElement(countdown3);
+                showElement(countdown2, 'scale(1.5)', 'scale(1)');
+                
+                setTimeout(() => {
+                    hideElement(countdown2);
+                    showElement(countdown1, 'scale(1.5)', 'scale(1)');
+                    
+                    setTimeout(() => {
+                        hideElement(countdown1);
+                        showElement(fightText, 'scale(0.5)', 'scale(1.2)');
+                        
+                        // ГОВОРИМ ФРАЗУ ПОСЛЕ "FIGHT!"
+                        setTimeout(() => {
+                            // Меняем спрайт на победу
+                            player.src = 'arts/BogachWin1.png';
+                            
+                            // Воспроизводим голос
+                            voiceSound.play();
+                            
+                            // Возвращаем стандартный спрайт после окончания звука
+                            voiceSound.onended = () => {
+                                player.src = 'arts/BogachStand.png';
+                                
+                                // Разблокируем управление
+                                setTimeout(() => {
+                                    controlsActive = true;
+                                    controlBlocked.style.opacity = '0';
+                                    hideElement(fightText);
+                                    
+                                    // Запускаем игровой цикл для плавного движения
+                                    gameLoop();
+                                }, 500);
+                            };
+                        }, 500);
+                    }, 1000);
+                }, 1000);
+            }, 1000);
+        }
+        
+        function showElement(element, startTransform = 'scale(0.5)', endTransform = 'scale(1)') {
+            element.style.opacity = '0';
+            element.style.transform = `translate(-50%, -50%) ${startTransform}`;
+            
+            // Активируем анимацию через следующий кадр
+            requestAnimationFrame(() => {
+                element.style.opacity = '1';
+                element.style.transform = `translate(-50%, -50%) ${endTransform}`;
+            });
+        }
+        
+        function hideElement(element) {
+            element.style.opacity = '0';
+            element.style.transform = 'translate(-50%, -50%) scale(0.5)';
+        }
+        
+        // Игровой цикл для плавного движения
+        function gameLoop() {
+            if (!controlsActive) {
+                moveAnimationFrame = requestAnimationFrame(gameLoop);
+                return;
+            }
+            
+            // Плавное движение с инерцией
+            const deceleration = Math.abs(velocityX) > 0.5 ? PLAYER_DECELERATION : 0;
+            velocityX *= deceleration;
+            
+            if (Math.abs(velocityX) < 0.5) velocityX = 0;
+            
+            // Обновляем позицию с учетом скорости
+            playerPosition += velocityX;
+            
+            // Ограничиваем движение в пределах экрана
+            const maxX = window.innerWidth - PLAYER_WIDTH - 50;
+            playerPosition = Math.max(20, Math.min(playerPosition, maxX));
+            
+            // Обновляем позицию на экране
+            player.style.left = playerPosition + 'px';
+            
+            // Обновляем направление манекена
+            updateDollDirection();
+            
+            moveAnimationFrame = requestAnimationFrame(gameLoop);
+        }
+        
+        // Управление клавиатурой
+        const keys = {};
+        const activeMovements = {
+            left: false,
+            right: false
+        };
+        
+        document.addEventListener('keydown', (e) => {
+            if (!controlsActive) return;
+            
+            const key = e.key.toLowerCase();
+            keys[key] = true;
+            
+            // Обработка перемещения
+            if (key === 'a' || key === 'ф') {
+                activeMovements.left = true;
+                velocityX = Math.max(velocityX - PLAYER_ACCELERATION, -MAX_VELOCITY);
+                
+                // Обновляем направление взгляда
+                if (playerDirection !== -1) {
+                    playerDirection = -1;
+                    player.style.transform = 'scaleX(-1)';
+                }
+            }
+            
+            if (key === 'd' || key === 'в') {
+                activeMovements.right = true;
+                velocityX = Math.min(velocityX + PLAYER_ACCELERATION, MAX_VELOCITY);
+                
+                // Обновляем направление взгляда
+                if (playerDirection !== 1) {
+                    playerDirection = 1;
+                    player.style.transform = 'scaleX(1)';
+                }
+            }
+            
+            // Обработка прыжка
+            if ((key === 'w' || key === 'ц') && !isJumping && !isSitting) {
+                jump();
+            }
+            
+            // Обработка приседания
+            if ((key === 's' || key === 'ы') && !isSitting && !isJumping) {
+                sit();
+            }
+            
+            // Обработка ударов
+            if (e.code === 'Space' && !isPunching && !isKicking) {
+                if (e.shiftKey) {
+                    // Удар ногой
+                    kick();
+                } else {
+                    // Удар рукой
+                    punch();
+                }
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            keys[key] = false;
+            
+            // Остановка движения
+            if (key === 'a' || key === 'ф') {
+                activeMovements.left = false;
+            }
+            
+            if (key === 'd' || key === 'в') {
+                activeMovements.right = false;
+            }
+            
+            // Вставание после приседания
+            if ((key === 's' || key === 'ы') && isSitting) {
+                standUp();
+            }
+        });
+        
+        function updateDollDirection() {
+            // Манекен всегда смотрит на игрока
+            const dollX = window.innerWidth / 2;
+            
+            if (playerPosition < dollX) {
+                // Игрок слева от манекена
+                dollDirection = 1; // Манекен смотрит вправо
+                doll.style.transform = 'translateX(-50%) scaleX(1)';
+            } else {
+                // Игрок справа от манекена
+                dollDirection = -1; // Манекен смотрит влево
+                doll.style.transform = 'translateX(-50%) scaleX(-1)';
+            }
+        }
+        
+        function jump() {
+            if (!controlsActive || isJumping) return;
+            
+            isJumping = true;
+            player.style.animation = 'jump 0.6s ease-in-out';
+            
+            // Возврат к нормальному состоянию после прыжка
+            setTimeout(() => {
+                player.style.animation = '';
+                isJumping = false;
+            }, 600);
+        }
+        
+        function sit() {
+            if (!controlsActive || isJumping) return;
+            
+            isSitting = true;
+            player.src = 'arts/BogachSit.png';
+            
+            // Анимация приседания
+            player.style.animation = 'sit-down 0.2s forwards';
+            
+            // Уменьшаем скорость при приседании
+            velocityX *= 0.5;
+        }
+        
+        function standUp() {
+            if (!isSitting) return;
+            
+            isSitting = false;
+            
+            // Анимация вставания
+            player.style.animation = 'stand-up 0.2s forwards';
+            
+            setTimeout(() => {
+                player.src = 'arts/BogachStand.png';
+                player.style.animation = '';
+            }, 200);
+        }
+        
+        function punch() {
+            if (!controlsActive || isPunching) return;
+            
+            isPunching = true;
+            player.src = 'arts/BogachHandBeat.png';
+            
+            // Проверяем попадание
+            checkHit(20);
+            
+            // Возврат к нормальному состоянию
+            setTimeout(() => {
+                if (!isSitting) {
+                    player.src = 'arts/BogachStand.png';
+                }
+                isPunching = false;
+            }, 300);
+        }
+        
+        function kick() {
+            if (!controlsActive || isKicking) return;
+            
+            isKicking = true;
+            player.src = 'arts/BogachLegBeat.png';
+            
+            // Проверяем попадание
+            checkHit(30);
+            
+            // Возврат к нормальному состоянию
+            setTimeout(() => {
+                if (!isSitting) {
+                    player.src = 'arts/BogachStand.png';
+                }
+                isKicking = false;
+            }, 400);
+        }
+        
+        function checkHit(damage) {
+            // Получаем позиции объектов
+            const playerRect = player.getBoundingClientRect();
+            const dollRect = doll.getBoundingClientRect();
+            
+            // Проверяем расстояние между игроком и манекеном
+            const distance = Math.abs(playerRect.left + playerRect.width / 2 - (dollRect.left + dollRect.width / 2));
+            
+            // Если игрок достаточно близко к манекену
+            if (distance < HIT_DISTANCE) {
+                // Создаем частицу урона
+                createDamageParticle(damage, dollRect.left + dollRect.width / 2, dollRect.top + dollRect.height / 2);
+                
+                // Создаем частицы пыли
+                for (let i = 0; i < 5; i++) {
+                    createDustParticle(dollRect.left + dollRect.width / 2, dollRect.top + dollRect.height / 2);
+                }
+                
+                // Анимация попадания по манекену
+                doll.src = 'arts/DollPunch.png';
+                
+                // Возвращаем обычный спрайт манекена
+                setTimeout(() => {
+                    doll.src = 'arts/Doll.png';
+                }, 200);
+                
+                // Обновляем счетчик ударов
+                hitCount += damage;
+                hitCountElement.textContent = hitCount;
+                
+                // Анимация увеличения счетчика
+                hitCountElement.style.transform = 'scale(1.5)';
+                setTimeout(() => {
+                    hitCountElement.style.transform = 'scale(1)';
+                }, 200);
+            }
+        }
+        
+        function createDamageParticle(damage, x, y) {
+            const particle = document.createElement('div');
+            particle.className = 'damage-particle';
+            particle.textContent = damage;
+            particle.style.left = x + 'px';
+            particle.style.top = y + 'px';
+            
+            document.querySelector('.game-container').appendChild(particle);
+            
+            // Удаляем частицу после анимации
+            setTimeout(() => {
+                particle.remove();
+            }, 1000);
+        }
+        
+        function createDustParticle(x, y) {
+            const dust = document.createElement('div');
+            dust.className = 'dust-particle';
+            
+            // Случайное смещение
+            const offsetX = (Math.random() - 0.5) * 50;
+            const offsetY = (Math.random() - 0.5) * 30;
+            
+            dust.style.left = (x + offsetX) + 'px';
+            dust.style.top = (y + offsetY) + 'px';
+            
+            document.querySelector('.game-container').appendChild(dust);
+            
+            // Удаляем частицу после анимации
+            setTimeout(() => {
+                dust.remove();
+            }, 500);
+        }
+        
+        // Обработка кнопки сдаться
+        surrenderBtn.addEventListener('click', surrender);
+        
+        function surrender() {
+            if (!gameActive) return;
+            
+            gameActive = false;
+            controlsActive = false;
+            
+            // Останавливаем игровой цикл
+            if (moveAnimationFrame) {
+                cancelAnimationFrame(moveAnimationFrame);
+            }
+            
+            // Показываем анимацию победы
+            player.src = 'arts/BogachWin1.png';
+            
+            setTimeout(() => {
+                player.src = 'arts/BogachWin2.png';
+                
+                setTimeout(() => {
+                    player.src = 'arts/BogachStand.png';
+                    
+                    // Затемняем экран
+                    fadeScreen.style.display = 'flex';
+                    fadeScreen.style.opacity = '1';
+                    fadeScreen.style.transition = 'opacity 2s';
+                    
+                    // Перенаправляем на главную страницу
+                    setTimeout(() => {
+                        window.location.href = 'index.html';
+                    }, 2000);
+                }, 1000);
+            }, 1000);
+        }
+        
+        // Инициализация при загрузке
+        window.addEventListener('load', () => {
+            // Настраиваем начальные позиции
+            const dollX = window.innerWidth / 2;
+            doll.style.left = dollX + 'px';
+            
+            player.style.left = playerPosition + 'px';
+            
+            // Обновляем направление манекена
+            updateDollDirection();
+        });
+        
+        // Обработка изменения размера окна
+        window.addEventListener('resize', () => {
+            const dollX = window.innerWidth / 2;
+            doll.style.left = dollX + 'px';
+            
+            // Ограничиваем позицию игрока
+            const maxX = window.innerWidth - PLAYER_WIDTH - 50;
+            playerPosition = Math.max(20, Math.min(playerPosition, maxX));
+            player.style.left = playerPosition + 'px';
+            
+            updateDollDirection();
+        });
+    </script>
+</body>
+</html>
